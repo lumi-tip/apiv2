@@ -39,7 +39,7 @@ RUN rm -rf $HOME/.pyenv
 RUN rm -rf /home/gitpod/.local/share/pypoetry /home/gitpod/.local/share/pipx /home/gitpod/.local/bin/poetry
 RUN curl https://pyenv.run | bash
 
-RUN rm -rf "$(pyenv root)/plugins" && (cd "$(pyenv root)" && git fetch --all && git reset --hard origin/master && git pull) && pyenv update
+RUN pyenv update
 RUN pyenv install 3.13.1 && pyenv global 3.13.1
 RUN pip install pipx
 RUN pipx install poetry
