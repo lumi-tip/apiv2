@@ -439,7 +439,7 @@ class AssetBigAndTechnologyPublishedSerializer(AssetBigSerializer):
 
     def get_translations(self, obj):
         result = {}
-        for t in obj.all_translations.filter(status="PUBLISHED"):
+        for t in obj.all_translations.filter(status__in=["PUBLISHED", "DRAFT"]):
             result[t.lang] = t.slug
         return result
 
