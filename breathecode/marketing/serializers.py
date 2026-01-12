@@ -695,17 +695,6 @@ class ShortLinkSerializer(serializers.ModelSerializer):
         if academy is None:
             raise ValidationException(f'Academy {self.context["academy"]} not found', slug="academy-not-found")
 
-        if self.instance is not None:  # creating a new link (instead of updating)
-            utc_now = timezone.now()
-            days_ago = self.instance.created_at + timedelta(days=1)
-            if days_ago < utc_now and (
-                self.instance.destination != data["destination"] or self.instance.slug != data["slug"]
-            ):
-                raise ValidationException(
-                    "You cannot update or delete short links that have been created more than 1 day ago, create a new link instead",
-                    slug="update-days-ago",
-                )
-
         return {**data, "academy": academy}
 
     def create(self, validated_data):
