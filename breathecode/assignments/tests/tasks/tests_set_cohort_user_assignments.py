@@ -324,12 +324,15 @@ class MediaTestSuite(AssignmentsTestCase):
             [
                 call("Executing set_cohort_user_assignments"),
                 call("History log saved"),
+                call("Executing sync_task_with_rigobot for task 1"),
             ],
         )
-        self.assertEqual(Logger.error.call_args_list, [call("App rigobot not found", exc_info=True)])
+        self.assertEqual(len(Logger.error.call_args_list), 1)
+        self.assertIn("Rigobot sync failed", str(Logger.error.call_args_list[0]))
 
+    @patch("linked_services.django.actions.generate_auth_keys", return_value=("0" * 64, "0" * 64))
     @patch.multiple("linked_services.django.service.Service", post=MagicMock(), put=MagicMock())
-    def test__rigobot_cancelled_revision(self):
+    def test__rigobot_cancelled_revision(self, mock_generate_auth_keys):
         task_type = random.choice(["LESSON", "QUIZ", "PROJECT", "EXERCISE"])
         task = {
             "task_status": "PENDING",
@@ -360,6 +363,7 @@ class MediaTestSuite(AssignmentsTestCase):
 
         set_cohort_user_assignments.delay(1)
 
+        model.task.refresh_from_db()
         self.assertEqual(self.bc.database.list_of("assignments.Task"), [self.bc.format.to_dict(model.task)])
         self.assertEqual(
             self.bc.database.list_of("admissions.CohortUser"),
@@ -392,6 +396,8 @@ class MediaTestSuite(AssignmentsTestCase):
             [
                 call("Executing set_cohort_user_assignments"),
                 call("History log saved"),
+                call("Executing sync_task_with_rigobot for task 1"),
+                call("Rigobot sync completed for task 1"),
             ],
         )
         self.assertEqual(Logger.error.call_args_list, [])
@@ -401,8 +407,9 @@ class MediaTestSuite(AssignmentsTestCase):
             [call("/v1/finetuning/me/repository/", json={"url": model.task.github_url, "activity_status": "INACTIVE"})],
         )
 
+    @patch("linked_services.django.actions.generate_auth_keys", return_value=("0" * 64, "0" * 64))
     @patch.multiple("linked_services.core.service.Service", post=MagicMock(), put=MagicMock())
-    def test__rigobot_schedule_revision(self):
+    def test__rigobot_schedule_revision(self, mock_generate_auth_keys):
         task_type = random.choice(["LESSON", "QUIZ", "PROJECT", "EXERCISE"])
         task = {
             "task_status": "DONE",
@@ -433,6 +440,7 @@ class MediaTestSuite(AssignmentsTestCase):
 
         set_cohort_user_assignments.delay(1)
 
+        model.task.refresh_from_db()
         self.assertEqual(self.bc.database.list_of("assignments.Task"), [self.bc.format.to_dict(model.task)])
         self.assertEqual(
             self.bc.database.list_of("admissions.CohortUser"),
@@ -465,6 +473,8 @@ class MediaTestSuite(AssignmentsTestCase):
             [
                 call("Executing set_cohort_user_assignments"),
                 call("History log saved"),
+                call("Executing sync_task_with_rigobot for task 1"),
+                call("Rigobot sync completed for task 1"),
             ],
         )
         self.assertEqual(Logger.error.call_args_list, [])

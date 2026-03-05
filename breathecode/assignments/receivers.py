@@ -1,14 +1,10 @@
 import logging
-from typing import Any, Type
 
-# from capyc.core.i18n import translation
 from django.dispatch import receiver
 
 from breathecode.admissions.signals import syllabus_asset_slug_updated
-from breathecode.assignments import tasks
 
 from .models import Task
-from .signals import assignment_status_updated
 
 # from breathecode.authenticate.actions import get_user_settings
 # from breathecode.authenticate.models import CredentialsGithub
@@ -31,16 +27,6 @@ def process_syllabus_asset_slug_updated(sender, **kwargs):
         f"{asset_type} slug {from_slug} was replaced with {to_slug} on all the syllabus, as a sideeffect "
         "we are replacing the slug also on the student tasks"
     )
-
-
-@receiver(assignment_status_updated, sender=Task)
-def process_cohort_history_log(sender: Type[Task], instance: Task, **kwargs: Any):
-    logger.info("Procesing Cohort history log for cohort: " + str(instance.id))
-    if instance.cohort is not None:
-        tasks.set_cohort_user_assignments.delay(instance.id)
-    else:
-        logger.info("No cohort found for assignment: " + str(instance.id))
-        return
 
 
 # @receiver(status_updated, sender=RepositoryDeletionOrder)

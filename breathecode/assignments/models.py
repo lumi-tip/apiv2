@@ -84,10 +84,41 @@ class RevisionStatus(models.TextChoices):
     IGNORED = "IGNORED", "Ignored"
 
 
+def _enqueue_history_log_chain_for_tasks(task_ids):
+    """Encola chain set_cohort+sync para cada task_id que tenga cohort y cohort_user STUDENT."""
+    from celery import chain
+
+    from breathecode.admissions.models import CohortUser
+
+    from . import tasks as assignment_tasks
+
+    tasks = Task.objects.filter(id__in=task_ids).select_related("cohort", "user").exclude(cohort__isnull=True)
+    for task in tasks:
+        cohort_user = CohortUser.objects.filter(
+            cohort=task.cohort, user=task.user, role="STUDENT"
+        ).first()
+        if cohort_user:
+            chain(
+                assignment_tasks.set_cohort_user_assignments.si(task.id),
+                assignment_tasks.sync_pending_tasks_to_history_log.si(cohort_user_id=cohort_user.id),
+            ).apply_async()
+
+
+class TaskQuerySet(models.QuerySet):
+    def update(self, **kwargs):
+        task_ids = list(self.values_list("id", flat=True))
+        result = super().update(**kwargs)
+        if task_ids:
+            _enqueue_history_log_chain_for_tasks(task_ids)
+        return result
+
+
 # Create your models here.
 class Task(models.Model):
     TaskStatus = TaskStatus
     RevisionStatus = RevisionStatus
+
+    objects = TaskQuerySet.as_manager()
 
     class TaskType(models.TextChoices):
         PROJECT = "PROJECT", "project"
@@ -190,6 +221,22 @@ class Task(models.Model):
         # only validate this on creation
         if creating:
             signals.assignment_created.delay(instance=self, sender=self.__class__)
+
+        update_fields = kwargs.get("update_fields")
+        skip_history_log = update_fields is not None and set(update_fields) <= {"rigobot_repository_id"}
+        if not kwargs.get("raw") and self.cohort_id and not skip_history_log:
+            from breathecode.admissions.models import CohortUser
+            from celery import chain
+            from . import tasks as assignment_tasks
+
+            cohort_user = CohortUser.objects.filter(
+                cohort_id=self.cohort_id, user_id=self.user_id, role="STUDENT"
+            ).first()
+            if cohort_user:
+                chain(
+                    assignment_tasks.set_cohort_user_assignments.si(self.id),
+                    assignment_tasks.sync_pending_tasks_to_history_log.si(cohort_user_id=cohort_user.id),
+                ).apply_async()
 
         self._current_task_status = self.task_status
         self._current_revision_status = self.revision_status

@@ -167,35 +167,49 @@ def set_cohort_user_assignments(task_id: int, **_: Any):
     cohort_user.save()
     logger.info("History log saved")
 
-    s = None
+    if hasattr(task.user, "credentialsgithub") and task.github_url:
+        sync_task_with_rigobot.delay(task.id)
+
+
+@task(bind=False, priority=TaskPriority.STUDENT.value)
+def sync_task_with_rigobot(task_id: int, **_: Any):
+    """
+    Sincroniza la Task con Rigobot (finetuning/repository).
+    Fire-and-forget: si falla, no afecta al chain de history_log.
+    """
+    logger.info(f"Executing sync_task_with_rigobot for task {task_id}")
+    task = Task.objects.select_related("user").filter(id=task_id).first()
+    if not task:
+        logger.error("Task not found")
+        return
+    if not hasattr(task.user, "credentialsgithub") or not task.github_url:
+        return
     try:
-        if hasattr(task.user, "credentialsgithub") and task.github_url:
-            with Service("rigobot", task.user.id) as s:
-                if task.task_status == "DONE":
-                    response = s.post(
-                        "/v1/finetuning/me/repository/",
-                        json={
-                            "url": task.github_url,
-                            "watchers": task.user.credentialsgithub.username,
-                        },
-                    )
-                    data = response.json()
-                    task.rigobot_repository_id = data["id"]
-
-                else:
-                    response = s.put(
-                        "/v1/finetuning/me/repository/",
-                        json={
-                            "url": task.github_url,
-                            "activity_status": "INACTIVE",
-                        },
-                    )
-
-                    data = response.json()
-                    task.rigobot_repository_id = data["id"]
-
-    except Exception as e:
-        raise AbortTask(str(e))
+        with Service("rigobot", task.user.id) as service:
+            if task.task_status == "DONE":
+                response = service.post(
+                    "/v1/finetuning/me/repository/",
+                    json={
+                        "url": task.github_url,
+                        "watchers": task.user.credentialsgithub.username,
+                    },
+                )
+                data = response.json()
+                task.rigobot_repository_id = data["id"]
+            else:
+                response = service.put(
+                    "/v1/finetuning/me/repository/",
+                    json={
+                        "url": task.github_url,
+                        "activity_status": "INACTIVE",
+                    },
+                )
+                data = response.json()
+                task.rigobot_repository_id = data["id"]
+        task.save(update_fields=["rigobot_repository_id"])
+        logger.info(f"Rigobot sync completed for task {task_id}")
+    except Exception as exc:
+        logger.exception("Rigobot sync failed for task %s: %s", task_id, exc)
 
 
 @task(bind=False, priority=TaskPriority.STUDENT.value)
