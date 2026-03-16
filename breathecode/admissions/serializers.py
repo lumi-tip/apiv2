@@ -1308,6 +1308,16 @@ class CohortUserSerializerMixin(serializers.ModelSerializer):
             cohort__schedule=cohort.schedule,
         ).count()
 
+    def get_active_cohorts_same_certificate(self, cohort, user_id):
+        return CohortUser.objects.filter(
+            Q(educational_status="ACTIVE") | Q(educational_status__isnull=True),
+            user_id=user_id,
+            role="STUDENT",
+            cohort__schedule=cohort.schedule,
+        ).exclude(
+            cohort_id=cohort.id,
+        ).values_list("cohort__name", "cohort__slug")
+
     def validate(self, data: OrderedDict):
         self.context["index"] += 1
         request = self.context["request"]
@@ -1378,11 +1388,27 @@ class CohortUserSerializerMixin(serializers.ModelSerializer):
 
         role = data.get("role") or (instance.role if instance else None) or "STUDENT"
 
-        if is_post_method and role == "STUDENT" and cohort.schedule and self.count_certificates_by_cohort(cohort, user.id) > 0:
-            raise ValidationException(
-                "This student is already in another cohort for the same certificate, please mark him/her hi "
-                "educational status on this prior cohort different than ACTIVE before cotinuing"
-            )
+        # Same-certificate restriction: only for non-SaaS cohorts. SaaS cohorts share
+        # "Flexible - no timeslots" but students can take multiple SaaS courses.
+        is_saas_cohort = cohort.available_as_saas is True or (
+            cohort.available_as_saas is None and getattr(cohort.academy, "available_as_saas", False) is True
+        )
+        if (
+            is_post_method
+            and role == "STUDENT"
+            and cohort.schedule
+            and not is_saas_cohort
+        ):
+            prior_cohorts = self.get_active_cohorts_same_certificate(cohort, user.id)
+            if prior_cohorts:
+                cohort_refs = ", ".join(
+                    f"{name} ({slug})" if name else slug
+                    for name, slug in prior_cohorts
+                )
+                raise ValidationException(
+                    f"This student is already in another cohort for the same certificate ({cohort_refs}). "
+                    "Please mark his/her educational status on this prior cohort different than ACTIVE before continuing"
+                )
 
         role = data.get("role")
 

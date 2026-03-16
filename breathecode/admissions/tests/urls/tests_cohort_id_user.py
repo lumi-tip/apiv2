@@ -552,17 +552,59 @@ class CohortIdUserIdTestSuite(AdmissionsTestCase):
         }
         response = self.client.post(url, data, format="json")
         json = response.json()
+        prior_cohort = models[0]["cohort"]
+        cohort_ref = f"{prior_cohort.name} ({prior_cohort.slug})"
         expected = {
             "detail": (
-                "This student is already in another cohort for the same "
-                "certificate, please mark him/her hi educational status on "
-                "this prior cohort different than ACTIVE before cotinuing"
+                f"This student is already in another cohort for the same certificate ({cohort_ref}). "
+                "Please mark his/her educational status on this prior cohort different than ACTIVE before continuing"
             ),
             "status_code": 400,
         }
 
         self.assertEqual(json, expected)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    """
+    🔽🔽🔽 User in two SaaS cohort with the same schedule (allowed)
+    """
+
+    @patch(GOOGLE_CLOUD_PATH["client"], apply_google_cloud_client_mock())
+    @patch(GOOGLE_CLOUD_PATH["bucket"], apply_google_cloud_bucket_mock())
+    @patch(GOOGLE_CLOUD_PATH["blob"], apply_google_cloud_blob_mock())
+    @patch("django.db.models.signals.pre_delete.send_robust", MagicMock(return_value=None))
+    @patch("breathecode.admissions.signals.student_edu_status_updated.send_robust", MagicMock(return_value=None))
+    def test_cohort_id_user__post__saas_cohort__same_schedule_allowed(self):
+        """SaaS cohorts: student can be in multiple cohorts with same schedule"""
+        models = [
+            self.generate_models(
+                authenticate=True,
+                cohort={"stage": "STARTED", "available_as_saas": True},
+                user=True,
+                profile_academy=True,
+                cohort_user=True,
+                syllabus=True,
+                syllabus_schedule=True,
+            )
+        ]
+
+        base = models[0].copy()
+        del base["user"]
+        del base["cohort"]
+        del base["cohort_user"]
+
+        models = models + [
+            self.generate_models(
+                cohort={"stage": "STARTED", "available_as_saas": True},
+                user=True,
+                cohort_user=True,
+                models=base,
+            )
+        ]
+        url = reverse_lazy("admissions:cohort_id_user", kwargs={"cohort_id": models[1]["cohort"].id})
+        data = {"user": models[0]["user"].id}
+        response = self.client.post(url, data, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     """
     🔽🔽🔽 Post adding the same user twice
