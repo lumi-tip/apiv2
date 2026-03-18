@@ -150,6 +150,7 @@ def render_session(request, session, token):
         "room_url": session.online_meeting_url,
         "session": GETSessionReportSerializer(session, many=False).data,
         "userName": (token.user.first_name + " " + token.user.last_name).strip(),
+        "show_chat": True,
         "backup_room_url": session.mentor.online_meeting_url,
     }
 

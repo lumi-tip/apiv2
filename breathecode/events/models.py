@@ -300,6 +300,10 @@ class Event(models.Model):
     author = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True)
 
     online_event = models.BooleanField(default=False)
+    enable_chat = models.BooleanField(
+        default=True,
+        help_text="Enable the Daily chat in the embedded call frame for this event.",
+    )
     venue = models.ForeignKey(Venue, on_delete=models.CASCADE, null=True, default=None)
     event_type = models.ForeignKey(EventType, on_delete=models.SET_NULL, null=True, default=None)
 

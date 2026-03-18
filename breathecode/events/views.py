@@ -1665,6 +1665,7 @@ def join_event(request, token, event):
                 "subject": event.title or f"Event {event.id}",
                 "room_url": event.live_stream_url,
                 "userName": name,
+                "show_chat": event.enable_chat,
                 "backup_room_url": "",
                 "leave_url": "close",
             }
