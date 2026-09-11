@@ -53,6 +53,27 @@ class AuthenticateTestSuite(AuthTestCase):
         self.assertEqual(json, {"detail": "member-not-found", "status_code": 404})
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
+    def test_github_reset_link_member_without_linked_user(self):
+        role = "pikachu"
+        self.headers(academy=1)
+        model = self.generate_models(
+            authenticate=True, capability="generate_temporal_token", profile_academy=True, role=role
+        )
+        orphan = self.bc.database.create(
+            profile_academy={"user": None, "email": "legacy@test.com"},
+            academy=model.academy,
+            role=model.role,
+        )
+        url = reverse_lazy(
+            "authenticate:profile_academy_reset_github_link",
+            kwargs={"profile_academy_id": orphan.profile_academy.id},
+        )
+        response = self.client.post(url)
+        json = response.json()
+
+        self.assertEqual(json, {"detail": "member-without-user", "status_code": 400})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_github_reset_link_ok(self):
         """Test /auth/member/<profile_academy_id>/token"""
         role = "academy_token"

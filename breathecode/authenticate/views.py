@@ -2978,9 +2978,21 @@ class TokenTemporalView(APIView):
 
     @capable_of("generate_temporal_token")
     def post(self, request, profile_academy_id=None, academy_id=None):
+        lang = get_user_language(request)
         profile_academy = ProfileAcademy.objects.filter(id=profile_academy_id).first()
         if profile_academy is None:
             raise ValidationException("Member not found", code=404, slug="member-not-found")
+
+        if profile_academy.user is None:
+            raise ValidationException(
+                translation(
+                    lang,
+                    en="This member is not linked to a user account yet",
+                    es="Este miembro aún no está vinculado a una cuenta de usuario",
+                ),
+                slug="member-without-user",
+                code=400,
+            )
 
         token, created = Token.get_or_create(user=profile_academy.user, token_type="temporal")
         serializer = TokenSmallSerializer(token)
@@ -3207,18 +3219,50 @@ class PasswordResetView(APIView):
 
     @capable_of("send_reset_password")
     def post(self, request, profileacademy_id=None, academy_id=None):
+        lang = get_user_language(request)
 
         profile_academy = ProfileAcademy.objects.filter(id=profileacademy_id).first()
         if profile_academy is None:
             raise ValidationException("Member not found", 400)
 
-        if reset_password([profile_academy.user], academy=profile_academy.academy):
+        if profile_academy.user is None:
+            logger.warning("Staff password reset aborted, member has no user profile_academy_id=%s", profileacademy_id)
+            raise ValidationException(
+                translation(
+                    lang,
+                    en="This member is not linked to a user account yet, so a password reset cannot be generated",
+                    es="Este miembro aún no está vinculado a una cuenta de usuario, no se puede generar el reset de contraseña",
+                ),
+                slug="member-without-user",
+                code=400,
+            )
 
-            token = Token.objects.filter(user=profile_academy.user, token_type="temporal").first()
+        logger.info(
+            "Staff password reset requested profile_academy_id=%s user_id=%s academy_id=%s",
+            profile_academy.id,
+            profile_academy.user.id,
+            academy_id,
+        )
+
+        if reset_password([profile_academy.user], academy=profile_academy.academy):
+            # reset_password creates a short token for the email. The admin UI copies
+            # reset_password_url, which must be a temporal token — looking up an
+            # existing temporal row 500s for users who never had one (legacy accounts).
+            token, created = Token.get_or_create(user=profile_academy.user, token_type="temporal")
             serializer = TokenSmallSerializer(token)
+            logger.info(
+                "Staff password reset completed user_id=%s temporal_token_created=%s",
+                profile_academy.user.id,
+                created,
+            )
             return Response(serializer.data)
-        else:
-            raise ValidationException("Reset password token could not be sent")
+
+        logger.warning(
+            "Staff password reset email was not sent user_id=%s profile_academy_id=%s",
+            profile_academy.user.id,
+            profile_academy.id,
+        )
+        raise ValidationException("Reset password token could not be sent")
 
 
 class ProfileInviteMeView(APIView):

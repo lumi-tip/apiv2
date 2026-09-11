@@ -673,7 +673,12 @@ def reset_password(users=None, extra=None, academy=None):
         raise Exception("Missing users")
 
     for user in users:
+        if user is None:
+            logger.warning("Skipping password reset for a member without a linked user")
+            continue
+
         token, created = Token.get_or_create(user, token_type="short")
+        logger.info("Generating password reset email user_id=%s token_created=%s", user.id, created)
 
         # returns true or false if the email was send
         return send_email_message(
